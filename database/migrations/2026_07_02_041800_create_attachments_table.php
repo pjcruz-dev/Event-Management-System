@@ -1,0 +1,35 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('attachments', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
+            $table->morphs('attachable');
+            $table->string('disk');
+            $table->string('path');
+            $table->string('filename');
+            $table->string('mime_type');
+            $table->unsignedBigInteger('size');
+            $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamps();
+
+            $table->index('organization_id');
+            $table->index(['organization_id', 'created_at']);
+            $table->index('uploaded_by');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('attachments');
+    }
+};

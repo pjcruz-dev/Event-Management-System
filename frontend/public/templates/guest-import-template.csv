@@ -1,0 +1,4 @@
+email,first_name,last_name,phone,household_name,group_label,tags,plus_one_limit,table
+jane@example.com,Jane,Smith,,The Smiths,Family,vip,1,Table 1
+john@example.com,John,Doe,,,,,,
+bob@example.com,Bob,Smith,,The Smiths,Family,,,Table 1

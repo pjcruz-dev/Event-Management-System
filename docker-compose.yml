@@ -1,0 +1,144 @@
+# Event SaaS — Docker stack for local dev and office LAN sharing.
+#
+# Quick start:
+#   1. copy docker/.env.example to .env.docker and set LAN_HOST to your PC's IP
+#   2. docker compose --env-file .env.docker up -d --build
+#   3. docker compose --env-file .env.docker exec backend php artisan db:seed
+#
+# Colleagues open: http://<LAN_HOST>:3000
+
+name: event-saas
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-event_saas}
+      MYSQL_USER: ${DB_USERNAME:-event_saas}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-event_saas_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "${MYSQL_PUBLISH_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      APP_URL: http://${LAN_HOST:-localhost}:${API_PUBLISH_PORT:-8001}
+      FRONTEND_URL: http://${LAN_HOST:-localhost}:${FRONTEND_PUBLISH_PORT:-3000}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-event_saas}
+      DB_USERNAME: ${DB_USERNAME:-event_saas}
+      DB_PASSWORD: ${DB_PASSWORD:-event_saas_secret}
+      RUN_SEED: ${RUN_SEED:-false}
+    volumes:
+      - .:/var/www/html
+      - backend_vendor:/var/www/html/vendor
+      - backend_storage:/var/www/html/storage/app/public
+    ports:
+      - "${API_PUBLISH_PORT:-8001}:8001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      APP_URL: http://${LAN_HOST:-localhost}:${API_PUBLISH_PORT:-8001}
+      FRONTEND_URL: http://${LAN_HOST:-localhost}:${FRONTEND_PUBLISH_PORT:-3000}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-event_saas}
+      DB_USERNAME: ${DB_USERNAME:-event_saas}
+      DB_PASSWORD: ${DB_PASSWORD:-event_saas_secret}
+    volumes:
+      - .:/var/www/html
+      - backend_vendor:/var/www/html/vendor
+      - backend_storage:/var/www/html/storage/app/public
+    depends_on:
+      mysql:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3"]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      APP_URL: http://${LAN_HOST:-localhost}:${API_PUBLISH_PORT:-8001}
+      FRONTEND_URL: http://${LAN_HOST:-localhost}:${FRONTEND_PUBLISH_PORT:-3000}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-event_saas}
+      DB_USERNAME: ${DB_USERNAME:-event_saas}
+      DB_PASSWORD: ${DB_PASSWORD:-event_saas_secret}
+    volumes:
+      - .:/var/www/html
+      - backend_vendor:/var/www/html/vendor
+      - backend_storage:/var/www/html/storage/app/public
+    depends_on:
+      mysql:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: ["php", "artisan", "schedule:work"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://${LAN_HOST:-localhost}:${API_PUBLISH_PORT:-8001}/api/v1
+      NEXT_PUBLIC_APP_URL: http://${LAN_HOST:-localhost}:${FRONTEND_PUBLISH_PORT:-3000}
+      NEXT_PUBLIC_SITE_URL: http://${LAN_HOST:-localhost}:${FRONTEND_PUBLISH_PORT:-3000}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "${FRONTEND_PUBLISH_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+
+volumes:
+  mysql_data:
+  backend_vendor:
+  backend_storage:
+  frontend_node_modules:
